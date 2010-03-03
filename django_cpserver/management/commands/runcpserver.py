@@ -29,6 +29,9 @@ Optional CherryPy server settings: (setting=value)
                         Defaults to www-data
   server_group=STRING   group to daemonized process
                         Defaults to www-data
+  static=static_root    Root of the static directory to use for 
+                        media files. No static is used if 
+                        this is not set, here or in settings.py
 
 Examples:
   Run a "standard" CherryPy server server
@@ -54,6 +57,7 @@ CPSERVER_OPTIONS = {
 'server_group': 'www-data',
 'ssl_certificate': None,
 'ssl_private_key': None,
+'static': None, 
 }
 
 
@@ -152,13 +156,40 @@ def start_server(options):
         change_uid_gid(options['server_user'], options['server_group'])
     
     from cherrypy.wsgiserver import CherryPyWSGIServer as Server
+    import cherrypy 
+
     from django.core.handlers.wsgi import WSGIHandler
+
+    if options['static']: 
+        # If we want a static directory, wrap the regular app
+        # with cherrypy.tree.mount() to serve static dir. 
+
+        app = WSGIHandler()
+        cherrypy.config.update({'global': {'log.screen': True}})
+        conf = {
+            '/' : {
+                'tools.wsgiapp.on': True, 
+                'tools.wsgiapp.app': app
+            }, 
+            '/static' : {
+                'tools.staticdir.on': True,
+                'tools.staticdir.dir': options['static']
+            }
+        }
+    
+        full_app = cherrypy.tree.mount(app, '/', config=conf) 
+        
+    else:
+
+        full_app = WSGIHandler() 
+
     server = Server(
-        (options['host'], int(options['port'])),
-        WSGIHandler(), 
-        int(options['threads']), 
+        (options['host'], int(options['port'])), 
+        full_app,
+        int(options['threads']),
         options['server_name']
     )
+
     if options['ssl_certificate'] and options['ssl_private_key']:
         server.ssl_certificate = options['ssl_certificate']
         server.ssl_private_key = options['ssl_private_key']  
@@ -169,6 +200,8 @@ def start_server(options):
 
 
 def runcpserver(argset=[], **kwargs):
+
+    from django.conf import settings
     # Get the options
     options = CPSERVER_OPTIONS.copy()
     options.update(kwargs)
@@ -201,6 +234,16 @@ def runcpserver(argset=[], **kwargs):
         fp = open(options['pidfile'], 'w')
         fp.write("%d\n" % os.getpid())
         fp.close()
+
+    # Load up static files if exists:
+    if not options['static']:
+        # No option was passed for static files
+        # Is it in settings.py? 
+        try:
+            options['static'] = settings.STATIC_ROOT
+        except AttributeError:
+            # No static found in settings.STATIC_ROOT 
+            pass
     
     # Start the webserver
     print 'starting server with options %s' % options
