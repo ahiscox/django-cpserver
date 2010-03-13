@@ -1,3 +1,7 @@
+NOTE: This doesn't currently work, static files are being wrapped in html,body,pre tags unfortunately. 
+I am working on a fix, when I have some time here soon; I've had something submitted that might work but 
+just haven't had time. If you wonder why JS and CSS isn't working, this is why. 
+
 Requirements
 ============
 CherryPy_
